@@ -76,13 +76,13 @@ livestream of color, depth and normal images side-by-side.
 
 In the `main.py` script, each frame of the captured RGB-D and normals data is accessible in the `save_frame` function. This includes the following:
 
-| Variable        | Description           | Range | Shape  |
-| ------------- |:-------------| : ---- : |: -----:|
-| `color`      | The RGB image. | 0.0 - 255.0 | (373,512,3) |
-| `depth`      | The corresponding grayscale depth map.      | 700.0 - 1250. |  (373,512,1) |
-| `norms` | Surface normals as 3D unit vectors for each pixel.     | 0.0 - 1.0 |  (373,512,3) |
-from where you
-can save it to files on your computer if needed.
+| Variable | Description                                        |     Range      |     Shape     |
+| -------- | :------------------------------------------------- | :------------: | :-----------: |
+| `color`  | The RGB image.                                     | 0.0 - 255.0    | 512 x 373 x 3 |
+| `depth`  | The corresponding grayscale depth map.             | 700.0 - 1250.0 | 512 x 373 x 1 |
+| `norms`  | Surface normals as 3D unit vectors for each pixel. | 0.0 - 1.0      | 512 x 373 x 3 |
+
+from where you can save it to files on your computer if needed.
 
 **NOTE:** The depth map output has values in range 0.7-1.25 m, even though the sensor can capture depth between 0.5-4.5 m. This is so that we can place our subject 0.7-1.25 m away from the camera, and everything further than 1.25 m is considered as background. It allows us to capture only the subject, with background as all zeros.
 
