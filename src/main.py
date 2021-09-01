@@ -1,117 +1,189 @@
 # coding: utf-8
+"""A command-line program to collect RGB-D data using Kinect V2.
 
-import sys
+usage: main.py [-h] [-l DELAY] [-d DURATION] [-r RATE] [-s] [-n] [-x X] [-X X] [-y Y] [-Y Y] [-z DEPTH] path
 
-import numpy as np
+positional arguments:
+  path                  Output directory for saving data.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -l DELAY, --delay DELAY
+                        Start recording with delay in seconds. Default is 0.
+  -d DURATION, --duration DURATION
+                        Duration in seconds for how long to record. Default is 0, which recordsindefinitely until stopped manually.
+  -r RATE, --rate RATE  Frame rate of the recording in frames per second. Default is 0, whichrecords as many frames as possible.
+  -s, --skin            Remove skin in images.
+  -n, --noise           Remove small artefacts in images.
+  -x X, --x X           Number of pixels to crop viewport on left. Default is 0.
+  -X X, --X X           Number of pixels to crop viewport on right. Default is 0.
+  -y Y, --y Y           Number of pixels to crop viewport on top. Default is 0.
+  -Y Y, --Y Y           Number of pixels to crop viewport on bottom. Default is 0.
+  -z DEPTH, --depth DEPTH
+                        Maximum range of depth to capture. Default is 4500. Must be 500 < value <= 4500.
+"""
+import argparse
+import os
+
 from cv2 import cv2
 
-from kinect import start_capture
+from models import KinectV2
+from utils import create_view, create_save_directories, save_frame
 
 
-def depth2normals(d_map):
-    """Computes surface normals from a depth map.
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", help="Output directory for saving data.")
 
-    :param d_map: A grayscale depth map image as a numpy array of size (H,W).
-    :return: The corresponding surface normals map as numpy array of size (H,W,3).
+    parser.add_argument("-l", "--delay", type=int, default=0,
+                        help="Start recording with delay in seconds. Default is 0.")
+    parser.add_argument("-d", "--duration", type=int, default=0,
+                        help="Duration in seconds for how long to record. Default is 0, which records"
+                             "indefinitely until stopped manually.")
+    parser.add_argument("-r", "--rate", type=float, default=0,
+                        help="Frame rate of the recording in frames per second. Default is 0, which"
+                             "records as many frames as possible.")
+
+    parser.add_argument('-s', '--skin', action='store_true', help="Remove skin in images.")
+    parser.add_argument('-n', '--noise', action='store_true', help="Remove small artefacts in images.")
+
+    parser.add_argument("-x", "--x", type=int, default=0,
+                        help="Number of pixels to crop viewport on left. Default is 0.")
+    parser.add_argument("-X", "--X", type=int, default=0,
+                        help="Number of pixels to crop viewport on right. Default is 0.")
+    parser.add_argument("-y", "--y", type=int, default=0,
+                        help="Number of pixels to crop viewport on top. Default is 0.")
+    parser.add_argument("-Y", "--Y", type=int, default=0,
+                        help="Number of pixels to crop viewport on bottom. Default is 0.")
+
+    parser.add_argument('-z', '--depth', type=int, default=4500,
+                        help="Maximum range of depth to capture. Default is 4500. "
+                             "Must be 500 < value <= 4500.")
+    return parser.parse_args()
+
+
+def init_sequence():
+    """Gets sequence metadata from user for recording.
+
+    This metadata includes:
+
+    - Surface name
+    -- User-provided name.
+
+    -- Can be anything, e.g., shirt, hoodie, t-shirt, jacket, coat, sweater, shorts, pants, etc.
+
+    - Surface material type
+    -- Colorful/Patterned (C)
+
+    -- Plain-dark (D)
+
+    -- Plain-light (W)
+
+    - Lighting
+    -- Daylight (N)
+
+    -- Indoor lighting (A)
+
+    - Viewing direction
+    -- Front-only (front)
+
+    -- Back-only (back)
+
+    -- Random (rot)
+
+    :return: Sequence metadata encoded as a path string.
     """
-    zx = cv2.Sobel(d_map, cv2.CV_64F, 1, 0, ksize=5)
-    zy = cv2.Sobel(d_map, cv2.CV_64F, 0, 1, ksize=5)
+    # Surface type
+    surface = str(input("Enter surface name: "))
 
-    normal = np.dstack((-zx, -zy, np.ones_like(d_map)))[:, :, ::-1]
-    n = np.linalg.norm(normal, axis=2)
-    normal[:, :, 0] /= n
-    normal[:, :, 1] /= n
-    normal[:, :, 2] /= n
+    # Select surface material
+    material = None
+    while material not in [1, 2, 3]:
+        material = int(input("Select surface material type:\n"
+                             "  1: Single-colored (Dark shades)\n"
+                             "  2: Single-colored (Light shades)\n"
+                             "  3: Multi-colored/Patterns ? "))
 
-    # offset and rescale values to be in 0-255
-    normal += 1
-    normal /= 2
-    normal[:, :, 0] /= 2
-    return normal
+        if material not in [1, 2, 3]:
+            print("Invalid choice! Please try again.")
+    material = "D" if material == 1 else "W" if material == 2 else "C"
 
+    # Lighting source
+    lighting = None
+    while lighting not in [1, 2]:
+        lighting = int(input("Select lighting source:\n"
+                             "  1: Daylight\n"
+                             "  2: Indoor lighting only ? "))
 
-def normalize_brightness(im_color):
-    hsv = cv2.cvtColor(im_color, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-    result = cv2.equalizeHist(v)
-    hsv = cv2.merge((h, s, result))
-    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        if lighting not in [1, 2]:
+            print("Invalid choice! Please try again.")
+    lighting = "N" if lighting == 1 else "A"
 
+    # Select surface direction
+    view = None
+    while view not in [1, 2, 3]:
+        view = int(input("Select viewing direction:\n"
+                         "  1: Front-only\n"
+                         "  2: Back-only\n"
+                         "  3: Random ? "))
 
-def save_frame(color, depth, normals):
-    """Save current frame of the RGB-D dataset.
+        if view not in [1, 2, 3]:
+            print("Invalid choice! Please try again.")
+    view = "front" if view == 1 else "back" if view == 2 else "rot"
 
-    Color image is a BGR image with three channels, each with values ranging
-    from 0-255. Depth map is a single-channel array with values in range 700-1250
-    and the surface normals have values in range 0-1, where each value is a 3D
-    vector.
-
-    :param color:
-    :param depth:
-    :param normals:
-    :return:
-    """
-    pass
-
-
-def show_frame(color, depth, norms, mask):
-    """Show current frame of the RGB-D dataset as images.
-
-    :param color:
-    :param depth:
-    :param norms:
-    :param mask:
-    :return:
-    """
-    # apply a colormap on grayscale depth map, makes easier to see depth changes
-    depth -= 700
-    depth *= 255 / (1250-700)
-    depth = cv2.applyColorMap(depth.astype(np.uint8), cv2.COLORMAP_BONE)
-
-    # noinspection PyPep8Naming
-    WINDOW_BG = 128  # gray window background
-    depth[mask] = WINDOW_BG
-    color[mask] = WINDOW_BG
-    norms[mask] = WINDOW_BG / 255  # (divide by 255 because normal values are in range 0-1)
-
-    dst = np.hstack((color / 255, depth / 255, norms))
-    cv2.imshow('RGB \t-\t Depth \t-\t Surface Normals', dst)
+    return f'{surface.lower()}/{lighting}{material}_{view}'
 
 
-def frame_listener(color, depth):
-    # Crop extra spacing around the object of interest (depends on relative placement of
-    # camera and the subject in real world).
-    color = color[60:-15, 200:-14]
-    depth = depth[60:-15, 200:-14]
+def main(args):
+    """The main function.
 
-    # Compute surface normals from depth map
-    norms = depth2normals(depth)
+    :param args The command-line arguments."""
 
-    # Keep foreground only
-    mask = np.logical_or(depth > 1250, depth < 700)  # 0.7m < foreground < 1.25m
-    color[mask] = 0
-    depth[mask] = 0
-    norms[mask] = 0
+    # Get sequence details from user
+    sequence = init_sequence()
+    path = os.path.join(args.path, sequence)
+    print(f"Sequence: {sequence}\n"
+          f"Location: {args.path}")
 
-    # (optional) normalize brightness of foreground in RGB image
-    color = normalize_brightness(color)
+    # Make directories for saving data
+    create_save_directories(path)
+    item_id = 0  # id of the current item in sequence, incremented at each iteration
 
-    save_frame(color, depth, norms)
-    show_frame(color, depth, norms, mask)
+    def callback(frame):
+        """Callback function where new frames from camera are received.
 
-    if cv2.waitKey(delay=1) == ord('q'):
-        raise KeyboardInterrupt
+        :param frame The current frame, containing RGB-D + Normals data and a foreground mask."""
 
+        # View the frame in an OpenCV window
+        cv2.imshow('Kinect Scanner', create_view(frame))
 
-def main():
-    try:
-        start_capture(callback=frame_listener)
-    except Exception as ex:
-        print(ex)
-        sys.exit(1)
+        # Save frame data
+        nonlocal item_id
+        save_frame(path, item_id, frame)
+        item_id += 1
 
-    sys.exit(0)
+        if cv2.waitKey(delay=1) == ord('q'):
+            raise KeyboardInterrupt
+
+    KinectV2.record(callback,
+                    config=KinectV2.Config(
+                        duration=args.duration,
+                        delay=args.delay,
+                        rate=args.rate
+                    ),
+                    filters=KinectV2.Filters(
+                        skin=args.skin,
+                        noise=args.noise
+                    ),
+                    viewport=KinectV2.Viewport(
+                        left=args.x,
+                        right=args.X,
+                        top=args.y,
+                        bottom=args.Y,
+                        near=500,
+                        far=args.depth if 500 < args.depth <= 4500 else 4500
+                    ))
 
 
 if __name__ == '__main__':
-    main()
+    main(args=parse_arguments())
