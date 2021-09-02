@@ -1,7 +1,7 @@
 import numpy as np
 from cv2 import cv2
 
-from .depth3d import dmap2norm
+from .depth3d import dmap2norm, dmap2pcloud, dmap2obj
 from .saver import create_save_directories, save_frame
 from .segmentation import segment
 
