@@ -11,8 +11,8 @@ The source code was written in Python 3.9.6 and tested on macOS Big Sur 11.5.1. 
 - `cython`
 - `opencv-python`
 
-These can be installed with `pip`. Using a virtualenv is recommended, e.g., by running the following commands in project
-directory:
+Clone the repository and `cd` to the project directory. Project requirements can now be installed with `pip`. Using a
+virtualenv is recommended, e.g., by running the following commands:
 
 ```
 python3 -m venv venv
@@ -56,38 +56,33 @@ of 70.6° x 60°, resulting in an average of around 7 x 7 depth pixels per degre
 The Kinect also has a regular RGB camera sensor. It has a resolution of 1920 x 1080px with a FoV of 84.1° x 53.8°,
 resulting in an average of about 22 x 20 color pixels per degree.
 
-_**Important:** Due to different FoVs, the depth and color sensors do not see exactly the same views, and need to be
-aligned._
+## Getting the RGB-D data
 
-## Aligning Depth and Color Images
+After cloning the project and installing the dependencies as described above,
 
-The color image has a much larger horizontal range, whereas the depth image has a slightly larger vertical range. This
-means that the points in the two images do not correspond directly to each other. They can be roughly aligned by
-cropping some width of the color image, and some height of the depth image.
+1. Connect the Kinect v2 device to your computer with a USB device.
+2. `cd` to the `src` directory.
+3. Run `python main.py -h` to see usage instructions.
 
-For more details, see the `align_frames` function in [`kinect.py`](src/kinect.py).
-
-## Getting the RGB-D images
-
-Connect the Kinect device to your computer, and then run the `main.py` script. It should open a window showing a
-livestream of color, depth and normal images side-by-side.
+This script allows you to record RGB-D data, compute surface normals, see a live camera feed of the data being
+collected, and save all data in a specified location.
 
 ![Sample output](output.png)
 
-In the `main.py` script, each frame of the captured RGB-D and normals data is accessible in the `save_frame` function. This includes the following:
+The saved data has the following format:
 
 | Variable | Description                                        |     Range      |     Shape     |
 | -------- | :------------------------------------------------- | :------------: | :-----------: |
-| `color`  | The RGB image.                                     | 0.0 - 255.0    | 512 x 373 x 3 |
-| `depth`  | The corresponding grayscale depth map.             | 700.0 - 1250.0 | 512 x 373 x 1 |
-| `norms`  | Surface normals as 3D unit vectors for each pixel. | 0.0 - 1.0      | 512 x 373 x 3 |
+| `color`  | The RGB image.                                     | 0.0 - 255.0    | 512 x 424 x 3 |
+| `depth`  | The corresponding grayscale depth map.             | 0.0 - 1.0      | 512 x 424     |
+| `norms`  | Surface normals as 3D unit vectors for each pixel. | 0.0 - 1.0      | 512 x 424 x 3 |
 
-from where you can save it to files on your computer if needed.
+## Exporting 3D Mesh from Depth Image
 
-**NOTE:** The depth map output has values in range 0.7-1.25 m, even though the sensor can capture depth between 0.5-4.5 m. This is so that we can place our subject 0.7-1.25 m away from the camera, and everything further than 1.25 m is considered as background. It allows us to capture only the subject, with background as all zeros.
+See the [`export3d.py`](src/export3d.py) script for how to export a depth map image as a 3D mesh in `.obj` format, which
+can then be imported into Blender or a similar tool.
 
-To change this behavior, edit the following line:
-```
-mask = np.logical_or(depth > 1250, depth < 700)
-```
-in the `frame_listener` function in [`main.py`](src/main.py).
+## See samples of collected data
+
+To visualize random samples from your data, run `python sample.py $DATASET_ROOT` with `$DATASET_ROOT` as full path of
+the folder where you saved your dataset using the `main.py` program.

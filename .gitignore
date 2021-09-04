@@ -143,3 +143,5 @@ cython_debug/
 # Local files
 data/
 exports/
+.DS_STORE
+tests.sh
