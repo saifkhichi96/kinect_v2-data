@@ -33,7 +33,7 @@ from utils import create_view, create_save_directories, save_frame
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="Output directory for saving data.")
+    parser.add_argument("--path", help="Output directory for saving data. Records only if none provided.")
 
     parser.add_argument("-l", "--delay", type=int, default=0,
                         help="Start recording with delay in seconds. Default is 0.")
@@ -59,6 +59,8 @@ def parse_arguments():
     parser.add_argument('-z', '--depth', type=int, default=4500,
                         help="Maximum range of depth to capture. Default is 4500. "
                              "Must be 500 < value <= 4500.")
+
+    parser.add_argument('--start', type=int, default=0)
     return parser.parse_args()
 
 
@@ -140,14 +142,16 @@ def main(args):
     :param args The command-line arguments."""
 
     # Get sequence details from user
-    sequence = init_sequence()
-    path = os.path.join(args.path, sequence)
-    print(f"Sequence: {sequence}\n"
-          f"Location: {args.path}")
+    if args.path:
+        sequence = init_sequence()
+        path = os.path.join(args.path, sequence)
+        print(f"Sequence: {sequence}\n"
+              f"Location: {args.path}")
 
-    # Make directories for saving data
-    create_save_directories(path)
-    item_id = 0  # id of the current item in sequence, incremented at each iteration
+        # Make directories for saving data
+        create_save_directories(path)
+
+    item_id = args.start  # id of the current item in sequence, incremented at each iteration
 
     def callback(frame):
         """Callback function where new frames from camera are received.
@@ -157,13 +161,17 @@ def main(args):
         # View the frame in an OpenCV window
         cv2.imshow('Kinect Scanner', create_view(frame))
 
-        # Save frame data
-        nonlocal item_id
-        save_frame(path, item_id, frame)
-        item_id += 1
-
-        if cv2.waitKey(delay=1) == ord('q'):
+        key = cv2.waitKey(delay=1)
+        if key == ord('q'):
             raise KeyboardInterrupt
+        elif key == ord('p'):
+            if args.path:
+                # Save frame data
+                nonlocal item_id
+                print(f"Capturing frame # {item_id}...")
+                save_frame(path, item_id, frame)
+                print("Done")
+                item_id += 1
 
     KinectV2.record(callback,
                     config=KinectV2.Config(

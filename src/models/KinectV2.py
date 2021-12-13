@@ -151,8 +151,8 @@ def record(callback,
                 depth = depth[:, viewport.left:]
 
             if viewport.right > 0:
-                color = color[:, -viewport.right, :]
-                depth = depth[:, -viewport.right]
+                color = color[:, :-viewport.right, :]
+                depth = depth[:, :-viewport.right]
 
             if viewport.top > 0:
                 color = color[viewport.top:, :, :]
