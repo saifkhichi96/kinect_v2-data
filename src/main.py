@@ -31,7 +31,7 @@ from models import KinectV2
 from utils import create_view, create_save_directories, save_frame
 
 
-def parse_arguments():
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help="Output directory for saving data.")
 
@@ -186,4 +186,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    main(args=parse_arguments())
+    main(args=parse_args())
