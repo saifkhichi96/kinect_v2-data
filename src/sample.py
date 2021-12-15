@@ -2,65 +2,42 @@
 """Visualize samples from dataset."""
 
 import argparse
-import os
-import random
+import cv2
+import numpy as np
 import time
 
-import numpy as np
-from cv2 import cv2
+from torch.utils.data import DataLoader
+from utils.data import RGBDRealDataset
 
 
-def read_dataset(path):
-    data = {}
-    size = 0
-    clothes = filter(lambda x: os.path.isdir(f'{path}/{x}'), os.listdir(path))
-    print("Enumerating dataset...")
-    for cloth in clothes:
-        items = []
-        cloth_dir = f'{path}/{cloth}'
-        sequences = filter(lambda x: os.path.isdir(f'{cloth_dir}/{x}'), os.listdir(cloth_dir))
-        for s in sequences:
-            seq_dir = f'{cloth_dir}/{s}'
-            images = os.listdir(f'{seq_dir}/images/')
-            for im in images:
-                index = im.split('.')[0].split('_')[-1]
-                rgb = f'{seq_dir}/images/rgb_{index}.tiff'
-                mask = f'{seq_dir}/masks/mask_{index}.png'
-                depth = f'{seq_dir}/depth_maps/depth_{index}.npz'
-                normals = f'{seq_dir}/normals/normals_{index}.npz'
-                items.append((rgb, mask, depth, normals))
+def read_dataset(path, b):
+    dataset = RGBDRealDataset(path)
+    print(len(dataset), "samples in dataset.")
 
-        data[cloth] = items
-        print(f"  {cloth.capitalize()}: {len(items)} samples")
-        size += len(items)
-
-    print(f'Dataset contains {len(data.keys())} surfaces containing {size} total samples.')
-    return data
+    return DataLoader(dataset, batch_size=b, shuffle=True)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="Root location of the dataset.")
+    parser.add_argument('--dataset_dir', '-d', type=str, default='../out')
+    parser.add_argument('--batch_size', '-b', type=int, default=4)
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-    path = args.path  # ""
-    data = read_dataset(path)
-    while True:
+def main(args):
+    data = read_dataset(args.dataset_dir, args.batch_size)
+    for it in data:
+        image, label = it
+        dmap, nmap, mask = label
+
         rows = []
-        for cloth in random.sample(list(data.keys()), 3) if len(data.keys()) > 3 else data.keys():
-            items = data[cloth]
-            random.shuffle(items)
+        for i in range(image.shape[0]):
+            im = image[i].numpy()
+            dm = dmap[i].numpy()
+            nm = nmap[i].numpy()
+            ma = mask[i].numpy()
 
-            color, _, depth, normals = random.choice(items)
-            color = cv2.imread(color)
-            depth = np.load(depth)
-            norms = np.load(normals)
-
-            depth = cv2.cvtColor(depth * 255, cv2.COLOR_GRAY2BGR)
-            rows.append(np.hstack((color / 255, depth / 255, norms)))
+            rows.append(create_view(frame=(im, dm, nm, ma)))
 
         cv2.imshow('Dataset', np.vstack(rows))
         if cv2.waitKey(delay=1) == ord('q'):
@@ -71,6 +48,7 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        args = parse_args()
+        main(args)
     except KeyboardInterrupt:
         print("Visualization interrupted.")
